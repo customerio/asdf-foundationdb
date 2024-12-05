@@ -8,47 +8,53 @@ install_foundationdb() {
   local version=$2
   local install_path=$3
   local platform="$(uname | tr '[:upper:]' '[:lower:]')"
-  local arch="$(uname -m)"
-  local download_url=$(get_download_url $platform $arch $version)
 
-  if [ "$TMPDIR" = "" ]; then
-    local tmp_download_dir=$(mktemp -d -t foundationdb_XXXXXX)
+  if [[ "$platform" != "darwin" ]]; then
+    echo "Platform ${platform} not supported.  No actions taken."
   else
-    local tmp_download_dir=$TMPDIR
+    echo "Platform is ${platform}"
+    local arch="$(uname -m)"
+    local download_url=$(get_download_url $platform $arch $version)
+
+    if [ "$TMPDIR" = "" ]; then
+      local tmp_download_dir=$(mktemp -d -t foundationdb_XXXXXX)
+    else
+      local tmp_download_dir=$TMPDIR
+    fi
+
+    if [ ! -d "${HOME}/.local/lib" ]; then
+      echo "creating ${HOME}/.local/lib"
+      mkdir -p "${HOME}/.local/lib"
+    fi
+
+    if [ -s "${HOME}/.local/lib/foundationdb" ]; then
+      echo "removing old symlink ${HOME}/.local/lib/foundationdb"
+      rm "${HOME}/.local/lib/foundationdb"
+    fi
+
+    mkdir -p "${install_path}"
+    echo "creating symlink ${HOME}/.local/lib/foundationdb => ${install_path}/.."
+    ln -s "${install_path}/.." "${HOME}/.local/lib/foundationdb"
+
+    local download_path="$tmp_download_dir/$(get_filename ${platform} ${arch} ${version})"
+    local pkg_install_path="$tmp_download_dir/pkg"
+
+    echo "Downloading foundationdb from ${download_url} to ${binary_path}"
+    curl -Lo $download_path $download_url
+
+    echo "Creating tmp directory"
+    mkdir -p "${pkg_install_path}"
+
+    echo "Extracting the pkg"
+    xar -xf ${download_path} -C "${pkg_install_path}"
+
+    echo "Extracting the payload"
+    cd "${install_path}"
+    gzcat ${pkg_install_path}/FoundationDB-clients.pkg/Payload | cpio -i -m --quiet
+
+    echo "Modifying the LC_ID_DYLIB field such that the linker can find the .dylib..."
+    install_name_tool -id "${install_path}/usr/local/lib/libfdb_c.dylib" "${install_path}/usr/local/lib/libfdb_c.dylib"
   fi
-
-  if [ ! -d "${HOME}/.local/lib" ]; then
-    echo "creating ${HOME}/.local/lib"
-    mkdir -p "${HOME}/.local/lib"
-  fi
-
-  if [ -s "${HOME}/.local/lib/foundationdb" ]; then
-    echo "removing old symlink ${HOME}/.local/lib/foundationdb"
-    rm "${HOME}/.local/lib/foundationdb"
-  fi
-
-  mkdir -p "${install_path}"
-  echo "creating symlink ${HOME}/.local/lib/foundationdb => ${install_path}/.."
-  ln -s "${install_path}/.." "${HOME}/.local/lib/foundationdb"
-
-  local download_path="$tmp_download_dir/$(get_filename ${platform} ${arch} ${version})"
-  local pkg_install_path="$tmp_download_dir/pkg"
-
-  echo "Downloading foundationdb from ${download_url} to ${binary_path}"
-  curl -Lo $download_path $download_url
-
-  echo "Creating tmp directory"
-  mkdir -p "${pkg_install_path}"
-
-  echo "Extracting the pkg"
-  xar -xf ${download_path} -C "${pkg_install_path}"
-
-  echo "Extracting the payload"
-  cd "${install_path}"
-  gzcat ${pkg_install_path}/FoundationDB-clients.pkg/Payload | cpio -i -m --quiet
-
-  echo "Modifying the LC_ID_DYLIB field such that the linker can find the .dylib..."
-  install_name_tool -id "${install_path}/usr/local/lib/libfdb_c.dylib" "${install_path}/usr/local/lib/libfdb_c.dylib"
 }
 
 get_filename() {
