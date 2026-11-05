@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 
+set -o pipefail
+
 releases_path=https://api.github.com/repos/apple/foundationdb/releases
-cmd="curl -s"
-if [ -n "$GITHUB_API_TOKEN" ]; then
-  cmd="$cmd -H 'Authorization: token $GITHUB_API_TOKEN'"
+
+# Stop a slow or stuck request instead of waiting forever.
+connect_timeout=${ASDF_FOUNDATIONDB_CONNECT_TIMEOUT:-10}
+max_time=${ASDF_FOUNDATIONDB_MAX_TIME:-30}
+
+curl_args=(--silent --show-error --fail --location
+  --connect-timeout "$connect_timeout" --max-time "$max_time")
+
+token=${GITHUB_API_TOKEN:-${GITHUB_TOKEN:-$MISE_GITHUB_TOKEN}}
+if [ -n "$token" ]; then
+  curl_args+=(-H "Authorization: Bearer $token")
 fi
-cmd="$cmd $releases_path"
 
 # stolen from https://github.com/rbenv/ruby-build/pull/631/files#diff-fdcfb8a18714b33b07529b7d02b54f1dR942
 function sort_versions() {
@@ -13,6 +22,11 @@ function sort_versions() {
     LC_ALL=C sort -t. -k 1,1 -k 2,2n -k 3,3n -k 4,4n -k 5,5n | awk '{print $2}'
 }
 
+if ! releases=$(curl "${curl_args[@]}" "$releases_path"); then
+  echo "asdf-foundationdb: could not list versions from $releases_path (connect timeout ${connect_timeout}s, max time ${max_time}s)" >&2
+  exit 1
+fi
+
 # Fetch all tag names, and get only second column. Then remove all unnecesary characters.
-versions=$(eval $cmd | grep -oE "tag_name\": *\".{1,15}\"," | awk -F '"' '{ print $3 }' | sort_versions)
+versions=$(echo "$releases" | grep -oE "tag_name\": *\".{1,15}\"," | awk -F '"' '{ print $3 }' | sort_versions)
 echo $versions

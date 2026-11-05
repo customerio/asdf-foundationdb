@@ -40,7 +40,12 @@ install_foundationdb() {
     local pkg_install_path="$tmp_download_dir/pkg"
 
     echo "Downloading foundationdb from ${download_url} to ${binary_path}"
-    curl -Lo $download_path $download_url
+    # Give up if the server does not answer, or sends under 1 KB/s for 30s.
+    if ! curl --fail --location --connect-timeout 10 --speed-limit 1024 --speed-time 30 \
+      -o "$download_path" "$download_url"; then
+      echo "asdf-foundationdb: could not download ${download_url}" >&2
+      exit 1
+    fi
 
     echo "Creating tmp directory"
     mkdir -p "${pkg_install_path}"
